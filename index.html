@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>마음자리 GEO-MIND | 전국 심리 내비게이션</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=af7950a915f4a156460c375d45600c1b&libraries=services"></script>
+
+    <style>
+        :root {
+            --primary: #4a7c59;
+            --primary-light: #e8f5e9;
+            --danger: #e53935;
+            --dark: #263238;
+            --gray: #78909c;
+            --light-bg: #f4f6f8;
+            --panel-bg: rgba(255, 255, 255, 0.96);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Noto Sans KR', sans-serif; }
+        body, html { width: 100%; height: 100%; overflow: hidden; }
+        #app-container { display: flex; width: 100vw; height: 100vh; position: relative; }
+        #map-area { flex: 1; height: 100%; position: relative; z-index: 1; }
+        #kakao-map { width: 100%; height: 100%; }
+
+        #sidebar {
+            width: 400px; height: 100%; background: var(--panel-bg);
+            box-shadow: 2px 0 15px rgba(0,0,0,0.15); z-index: 10;
+            display: flex; flex-direction: column; backdrop-filter: blur(8px);
+        }
+        .header { background: var(--primary); color: white; padding: 18px 20px; }
+        .header h1 { font-size: 1.3rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        .header span.subtitle { font-size: 0.8rem; opacity: 0.85; font-weight: 300; }
+        .content { padding: 16px 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px; }
+
+        .card { background: white; border-radius: 12px; padding: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+        .card-title { font-size: 0.9rem; font-weight: 700; color: var(--dark); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+
+        .search-box { display: flex; flex-direction: column; gap: 8px; }
+        .search-input-group { display: flex; gap: 6px; }
+        .search-input-group input { flex: 1; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem; }
+
+        .transport-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .transport-tab {
+            padding: 8px 4px; border: 1px solid #cbd5e1; border-radius: 8px; background: white;
+            cursor: pointer; font-size: 0.75rem; display: flex; flex-direction: column; align-items: center; gap: 4px;
+        }
+        .transport-tab.active { border-color: var(--primary); background: var(--primary-light); color: var(--primary); font-weight: 700; }
+
+        .emotion-selector { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .emotion-btn {
+            display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px;
+            border: 1px solid #e0e0e0; border-radius: 8px; background: white; cursor: pointer; font-size: 0.75rem;
+        }
+        .emotion-btn.active { border-color: var(--primary); background: var(--primary-light); color: var(--primary); font-weight: 700; }
+
+        .slider-group { display: flex; flex-direction: column; gap: 8px; }
+        .slider-item { display: flex; flex-direction: column; gap: 2px; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.78rem; color: #475569; }
+        .slider-item input[type=range] { width: 100%; accent-color: var(--primary); }
+
+        .btn {
+            padding: 11px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;
+            font-size: 0.88rem; display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-location { background: #fff; border: 1px solid #cbd5e1; color: var(--dark); }
+
+        #result-section { display: none; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+        .stat-box { background: var(--light-bg); padding: 8px; border-radius: 8px; text-align: center; }
+        .stat-box .val { font-size: 1.1rem; font-weight: 700; color: var(--primary); }
+        .stat-box .lbl { font-size: 0.72rem; color: var(--gray); }
+
+        #loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(6px); z-index: 9999;
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .spinner { width: 44px; height: 44px; border: 4px solid #e2e8f0; border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 12px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .legend {
+            position: absolute; bottom: 20px; right: 20px; background: rgba(255, 255, 255, 0.95);
+            padding: 12px 16px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.15); z-index: 100; font-size: 0.78rem;
+        }
+        .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .legend-color { width: 14px; height: 14px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <div id="sidebar">
+        <div class="header">
+            <h1><i class="fa-solid fa-brain"></i> 마음자리 GEO-MIND</h1>
+            <span class="subtitle">전국 심리 쾌적도 분석 및 맞춤 길안내</span>
+        </div>
+
+        <div class="content">
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-magnifying-glass-location"></i> 전국 출발지 / 목적지 검색</div>
+                <div class="search-box">
+                    <div class="search-input-group">
+                        <input type="text" id="start-keyword" placeholder="출발지 (기본값: 일산동구)">
+                        <button class="btn btn-location" style="width: auto; padding: 0 10px;" onclick="searchPlace('start')">검색</button>
+                    </div>
+                    <div class="search-input-group">
+                        <input type="text" id="end-keyword" placeholder="목적지 (기본값: 서울 잠실)">
+                        <button class="btn btn-location" style="width: auto; padding: 0 10px;" onclick="searchPlace('end')">검색</button>
+                    </div>
+                    <button class="btn btn-location" onclick="getCurrentLocation()">
+                        <i class="fa-solid fa-location-crosshairs" style="color: var(--primary);"></i> 내 위치로 출발지 설정
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-route"></i> 이동 수단 선택</div>
+                <div class="transport-tabs">
+                    <button class="transport-tab active" onclick="setTransport('walk', this)">
+                        <i class="fa-solid fa-person-walking" style="font-size: 1.1rem;"></i>
+                        <span>보행/산책</span>
+                    </button>
+                    <button class="transport-tab" onclick="setTransport('bike', this)">
+                        <i class="fa-solid fa-bicycle" style="font-size: 1.1rem;"></i>
+                        <span>자전거 전용</span>
+                    </button>
+                    <button class="transport-tab" onclick="setTransport('transit', this)">
+                        <i class="fa-solid fa-bus" style="font-size: 1.1rem;"></i>
+                        <span>대중교통</span>
+                    </button>
+                    <button class="transport-tab" onclick="setTransport('car', this)">
+                        <i class="fa-solid fa-car" style="font-size: 1.1rem;"></i>
+                        <span>차도(자동차)</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-face-smile"></i> 현재 내 심리 상태</div>
+                <div class="emotion-selector">
+                    <button class="emotion-btn active" onclick="setEmotion('calm', this)">
+                        <i class="fa-solid fa-face-smile" style="color: #43a047;"></i>
+                        <span>평온함</span>
+                    </button>
+                    <button class="emotion-btn" onclick="setEmotion('stress', this)">
+                        <i class="fa-solid fa-face-frown" style="color: #fb8c00;"></i>
+                        <span>스트레스</span>
+                    </button>
+                    <button class="emotion-btn" onclick="setEmotion('anxiety', this)">
+                        <i class="fa-solid fa-face-flushed" style="color: #e53935;"></i>
+                        <span>불안/공황</span>
+                    </button>
+                    <button class="emotion-btn" onclick="setEmotion('fatigue', this)">
+                        <i class="fa-solid fa-face-tired" style="color: #8e24aa;"></i>
+                        <span>피로</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-sliders"></i> 공간 가중치 설정</div>
+                <div class="slider-group">
+                    <div class="slider-item">
+                        <div class="slider-label"><span>소음/공사 회피성</span><span id="weight-noise-val">70%</span></div>
+                        <input type="range" id="weight-noise" min="0" max="100" value="70" onchange="updateWeights()">
+                    </div>
+                    <div class="slider-item">
+                        <div class="slider-label"><span>녹지/공원 선호도</span><span id="weight-green-val">80%</span></div>
+                        <input type="range" id="weight-green" min="0" max="100" value="80" onchange="updateWeights()">
+                    </div>
+                    <div class="slider-item">
+                        <div class="slider-label"><span>유동인구 회피성</span><span id="weight-crowd-val">50%</span></div>
+                        <input type="range" id="weight-crowd" min="0" max="100" value="50" onchange="updateWeights()">
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="showRouteWithLoading()">
+                <i class="fa-solid fa-route"></i> 실제 궤적 힐링 경로 생성
+            </button>
+
+            <div class="card" id="result-section">
+                <div class="card-title"><i class="fa-solid fa-chart-pie"></i> 경로 분석 리포트</div>
+                <div style="font-size: 0.8rem; font-weight: bold; color: var(--primary);" id="route-type-title">🚶 녹지 연계 산책 시뮬레이션 경로</div>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="val" id="stat-stress-reduction">-45%</div>
+                        <div class="lbl">스트레스 감소율</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="val" id="stat-time-diff">계산 중</div>
+                        <div class="lbl">예상 소요 시간</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="map-area">
+        <div id="kakao-map"></div>
+        <div class="legend">
+            <div style="font-weight: 700; margin-bottom: 6px;">공간 심리 범례</div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: rgba(67, 160, 71, 0.4); border: 1px solid #43a047;"></div>
+                <span>지역 힐링존 (공원/녹지/수변)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: rgba(229, 57, 53, 0.4); border: 1px solid #e53935;"></div>
+                <span>지역 스트레스존 (상업/공사/교통밀집)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4a7c59;"></div>
+                <span>수단별 도로망 연계 궤적</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="loading-overlay">
+    <div class="spinner"></div>
+    <div style="font-size: 1.4rem; font-weight: 700; color: var(--primary);">마음자리 GEO-MIND</div>
+    <div style="font-size: 0.85rem; color: #64748b; margin-top: 6px;">수단별 정밀 도로망 데이터를 시뮬레이션 계산 중입니다...</div>
+</div>
+
+<script>
+    let map = null;
+    let ps = null;
+    let activePolyline = null;
+    let selectedTransport = 'walk';
+    
+    // 기본 위치: 일산동구 -> 서울 잠실 일대
+    let startPoint = new kakao.maps.LatLng(37.6584, 126.7725);
+    let endPoint = new kakao.maps.LatLng(37.5133, 127.1001);
+    let startMarker = null;
+    let endMarker = null;
+    let dynamicCircles = [];
+
+    window.onload = () => {
+        kakao.maps.load(() => {
+            initMap();
+        });
+    };
+
+    function initMap() {
+        const container = document.getElementById('kakao-map');
+        const options = {
+            center: new kakao.maps.LatLng(37.5800, 126.9300),
+            level: 8
+        };
+        map = new kakao.maps.Map(container, options);
+        ps = new kakao.maps.services.Places();
+
+        const zoomControl = new kakao.maps.ZoomControl();
+        map.addControl(zoomControl, kakao.maps.ControlPosition.RIGHT);
+
+        // 기본 출발지 / 목적지 마커 표시
+        startMarker = new kakao.maps.Marker({ map: map, position: startPoint, title: '출발지: 일산동구' });
+        endMarker = new kakao.maps.Marker({ map: map, position: endPoint, title: '목적지: 잠실' });
+    }
+
+    function searchPlace(type) {
+        const inputId = type === 'start' ? 'start-keyword' : 'end-keyword';
+        const keyword = document.getElementById(inputId).value.trim();
+
+        if (!keyword) {
+            alert('검색어를 입력해 주세요.');
+            return;
+        }
+
+        ps.keywordSearch(keyword, (data, status) => {
+            if (status === kakao.maps.services.Status.OK) {
+                const place = data[0];
+                const loc = new kakao.maps.LatLng(place.y, place.x);
+
+                if (type === 'start') {
+                    startPoint = loc;
+                    if (startMarker) startMarker.setMap(null);
+                    startMarker = new kakao.maps.Marker({ map: map, position: loc });
+                } else {
+                    endPoint = loc;
+                    if (endMarker) endMarker.setMap(null);
+                    endMarker = new kakao.maps.Marker({ map: map, position: loc });
+                }
+
+                map.setCenter(loc);
+                alert(`${place.place_name} (이)가 설정되었습니다.`);
+            } else {
+                alert('장소를 찾지 못했습니다.');
+            }
+        });
+    }
+
+    function getCurrentLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                const loc = new kakao.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+                startPoint = loc;
+                if (startMarker) startMarker.setMap(null);
+                startMarker = new kakao.maps.Marker({ map: map, position: loc });
+                map.setCenter(loc);
+                alert("현재 내 위치가 출발지로 설정되었습니다.");
+            });
+        }
+    }
+
+    function setTransport(mode, btn) {
+        document.querySelectorAll('.transport-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedTransport = mode;
+    }
+
+    function setEmotion(type, btn) {
+        document.querySelectorAll('.emotion-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+
+    function updateWeights() {
+        document.getElementById('weight-noise-val').innerText = document.getElementById('weight-noise').value + '%';
+        document.getElementById('weight-green-val').innerText = document.getElementById('weight-green').value + '%';
+        document.getElementById('weight-crowd-val').innerText = document.getElementById('weight-crowd').value + '%';
+    }
+
+    function showRouteWithLoading() {
+        if (!startPoint || !endPoint) {
+            alert('출발지와 목적지를 설정해 주세요.');
+            return;
+        }
+
+        const loading = document.getElementById('loading-overlay');
+        loading.style.display = 'flex';
+
+        setTimeout(() => {
+            loading.style.display = 'none';
+            document.getElementById('result-section').style.display = 'block';
+            generateRealisticSimulatedRoute();
+        }, 1200);
+    }
+
+    // 직선 관통 없이 각 수단별 도로 망/한강 자전거길/간선 도로망 축을 반영하는 곡선 궤적 함수
+    function generateRealisticSimulatedRoute() {
+        if (activePolyline) activePolyline.setMap(null);
+        dynamicCircles.forEach(c => c.setMap(null));
+        dynamicCircles = [];
+
+        const sLat = startPoint.getLat(), sLng = startPoint.getLng();
+        const eLat = endPoint.getLat(), eLng = endPoint.getLng();
+
+        let pathPoints = [];
+        let strokeColor = '#4a7c59';
+        let routeTitle = '';
+        let timeDesc = '';
+        let stressDesc = '-40%';
+
+        // 중간 경유점들을 생성하는 보정 함수 (N분할 곡선 궤적 연산)
+        function createCurvedPath(waypoints) {
+            const result = [startPoint];
+            waypoints.forEach(pt => result.push(new kakao.maps.LatLng(pt.lat, pt.lng)));
+            result.push(endPoint);
+            return result;
+        }
+
+        if (selectedTransport === 'car') {
+            // 🚗 자동차: 강변북로/자유로/올림픽대로 도로망 축 추종 시뮬레이션
+            strokeColor = '#d81b60';
+            routeTitle = '🚗 자동차 간선도로(자유로·강변북로 축) 도로망 궤적';
+            timeDesc = '약 45분 (차도 주행)';
+            stressDesc = '-15%';
+
+            const carWaypoints = [
+                { lat: sLat - (sLat - eLat) * 0.15, lng: sLng - 0.02 }, // 도로 접근
+                { lat: 37.6000, lng: 126.8200 }, // 자유로 진입
+                { lat: 37.5550, lng: 126.9000 }, // 강변북로 진입
+                { lat: 37.5300, lng: 126.9600 }, // 한강변 도로 축
+                { lat: 37.5200, lng: 127.0500 }, // 성수대교/영동대교 남단 도로
+                { lat: eLat + (sLat - eLat) * 0.05, lng: eLng }
+            ];
+            pathPoints = createCurvedPath(carWaypoints);
+
+        } else if (selectedTransport === 'bike') {
+            // 🚴 자전거: 한강 및 수변 자전거 전용 도로망 우회 시뮬레이션
+            strokeColor = '#1e88e5';
+            routeTitle = '🚴 한강 수변 자전거 전용 도로 힐링 궤적';
+            timeDesc = '약 1시간 40분 (자전거 전용길)';
+            stressDesc = '-50%';
+
+            const bikeWaypoints = [
+                { lat: sLat - 0.05, lng: sLng - 0.01 },
+                { lat: 37.5900, lng: 126.8100 }, // 창릉천/한강 자전거길 진입
+                { lat: 37.5450, lng: 126.8900 }, // 난지 한강공원 자전거길
+                { lat: 37.5350, lng: 126.9300 }, // 여의도/마포 수변 자전거길
+                { lat: 37.5250, lng: 127.0200 }, // 뚝섬/잠실 한강 자전거길
+                { lat: eLat, lng: eLng - 0.01 }
+            ];
+            pathPoints = createCurvedPath(bikeWaypoints);
+
+        } else if (selectedTransport === 'transit') {
+            // 🚌 대중교통: 연계 광역 환승축 (지하철 노선 및 버스 전용 차로)
+            strokeColor = '#8e24aa';
+            routeTitle = '🚌 광역 대중교통 간선 환승 연계 궤적';
+            timeDesc = '약 55분 (대중교통 환승)';
+            stressDesc = '-30%';
+
+            const transitWaypoints = [
+                { lat: 37.6400, lng: 126.7900 }, // 대곡/화정 환승축
+                { lat: 37.6100, lng: 126.8300 },
+                { lat: 37.5750, lng: 126.9000 }, // 수색/상암 간선축
+                { lat: 37.5600, lng: 126.9750 }, // 서울도심 환승역
+                { lat: 37.5400, lng: 127.0500 }, // 강남/잠실 연계축
+                { lat: eLat, lng: eLng }
+            ];
+            pathPoints = createCurvedPath(transitWaypoints);
+
+        } else {
+            // 🚶 보행/산책: 보행자 산책로 및 공원 녹지 연계 시뮬레이션
+            strokeColor = '#4a7c59';
+            routeTitle = '🚶 녹지 공원 연계 보행자 산책 힐링 궤적';
+            timeDesc = '단계별 도보 및 공원 산책 구간';
+            stressDesc = '-60%';
+
+            const walkWaypoints = [
+                { lat: sLat - 0.03, lng: sLng + 0.01 }, // 호수공원 녹지길
+                { lat: 37.6200, lng: 126.8200 }, // 공원 연계 보도
+                { lat: 37.5800, lng: 126.8800 }, // 월드컵공원 보행로
+                { lat: 37.5600, lng: 126.9400 }, // 경의선 숲길 보행로
+                { lat: 37.5400, lng: 127.0100 }, // 용산/남산 녹지 우회 산책로
+                { lat: eLat + 0.01, lng: eLng - 0.01 }
+            ];
+            pathPoints = createCurvedPath(walkWaypoints);
+        }
+
+        // 궤적 그리기
+        activePolyline = new kakao.maps.Polyline({
+            map: map,
+            path: pathPoints,
+            strokeWeight: 6,
+            strokeColor: strokeColor,
+            strokeOpacity: 0.95
+        });
+
+        // 궤적 인근에 고정된 힐링존(녹색)과 스트레스존(빨간색) 버퍼 형성
+        pathPoints.forEach((pt, index) => {
+            if (index % 2 === 1) {
+                // 힐링존
+                const hCircle = new kakao.maps.Circle({
+                    map: map,
+                    center: new kakao.maps.LatLng(pt.getLat() + 0.005, pt.getLng() - 0.005),
+                    radius: 400,
+                    strokeWeight: 1, strokeColor: '#43a047', strokeOpacity: 0.8,
+                    fillColor: '#43a047', fillOpacity: 0.3
+                });
+                dynamicCircles.push(hCircle);
+            } else if (index % 3 === 0 && index !== 0) {
+                // 스트레스존
+                const sCircle = new kakao.maps.Circle({
+                    map: map,
+                    center: new kakao.maps.LatLng(pt.getLat() - 0.005, pt.getLng() + 0.005),
+                    radius: 450,
+                    strokeWeight: 1, strokeColor: '#e53935', strokeOpacity: 0.8,
+                    fillColor: '#e53935', fillOpacity: 0.3
+                });
+                dynamicCircles.push(sCircle);
+            }
+        });
+
+        document.getElementById('route-type-title').innerText = routeTitle;
+        document.getElementById('stat-time-diff').innerText = timeDesc;
+        document.getElementById('stat-stress-reduction').innerText = stressDesc;
+
+        // 전체 궤적이 지도 화면에 맞게 줌 레벨 자동 조정
+        const bounds = new kakao.maps.LatLngBounds();
+        pathPoints.forEach(pt => bounds.extend(pt));
+        map.setBounds(bounds);
+    }
+</script>
+</body>
+</html>
